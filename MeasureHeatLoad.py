@@ -79,10 +79,18 @@ def change_superconductors(Igoal):
 
 
 ### Power settings
-with open('settings.txt.','r') as f:
+with open('setnum','r') as f:
+    setnum = int(f.readline())
+
+if setnum == 0: filename = 'settings28and18.txt'
+if setnum == 1: filename = 'settings28only.txt'
+if setnum == 2: filename = 'settings18at28.txt'
+if setnum == 3: filename = 'settings18only.txt'
+
+with open(filename,'r') as f:
     settings = f.readlines()
 
-with ('results','w') as output:
+with ('results','a') as output:
     for setting in settings():
         setting = setting.split()
         Iinj = float(settting[0])
@@ -92,28 +100,43 @@ with ('results','w') as output:
         P28min = int(setting[4])
         P28max = int(setting[5])
         P28stp = int(setting[6])
-        set18 = 0
-        if(len(setting)>7):
-            P18min = int(setting(7))
-            P18max = int(setting(8))
-            P18stp = int(setting(9))
-            set18 = 1
+        P18min = int(setting(7))
+        P18max = int(setting(8))
+        P18stp = int(setting(9))
 
         #### Set magnet
         change_superconductors(np.array([Iinj,Iext,Imid,Isxt])
     
         #### Set power
         P28vals = np.linspace(P28min,P28max,int((P28max-P28min)/(P28stp*1.))+1)
-        if set18:
-            P18vals = np.linspace(P18min,P18max,int((P18max-P18min)/(P18stp*1.))+1)
-        else:
-            P18vals = np.array([-1])
+        P18vals = np.linspace(P18min,P18max,int((P18max-P18min)/(P18stp*1.))+1)
     
         for P28 in P28vals:
             for P18 in P18vals:
-                venus.write({' ':P28})   # DST set P28
-                if P18>0:
-                    venus.write({' ':P18})   # DST set P18
+                toomuch = 0
+                venus.write({'g28_req':P28})   # DST check if writing when off matters
+                venus.write({'k18_fw':P18})   # DST check if writing when off matters
+
+                #### DST add line to watch for settling or trouble
+                read heater power
+                    while not settled:
+                            measure
+                            if power<.1:
+                               change power to low
+                               toomuch = 1
+                               if P18 isn't last one or P28 isn't last one:
+                                   skip to next in list
+
+
                 # wait for a while and watch for trouble
                 # when settled:
-                output.write("\n")   #DST
+                val18 = P18
+                val28 = P28
+                if len(P18vals)==1: val18 = 0
+                if len(P28vals)==1: val28 = 0
+                if not toomuch:
+                    output.write("%.1f %5.1f %5.1f %5.1f %5.1f %6.1f %6.1f %5.3f\n"
+                            %(time.time(),Iinj,Iext,Imid,Isxt,val28,val18,venus.read('four_k_heater_power'))
+
+with open('setnum','w') as f:
+    f.write(str(setnum+1))
