@@ -90,6 +90,7 @@ if setnum == 3: filename = 'settings18only.txt'
 with open(filename,'r') as f:
     settings = f.readlines()
 
+chngidx = 0
 with ('results','a') as output:
     for setting in settings():
         setting = setting.split()
@@ -103,9 +104,13 @@ with ('results','a') as output:
         P18min = int(setting(7))
         P18max = int(setting(8))
         P18stp = int(setting(9))
+        P28no = []
+        P18no = []
 
         #### Set magnet
-        change_superconductors(np.array([Iinj,Iext,Imid,Isxt])
+        venus.write({'g28_req':P28min})   
+        venus.write({'k18_fw':P18min})   
+        change_superconductors(np.array([Iinj,Iext,Imid,Isxt]))
     
         #### Set power
         P28vals = np.linspace(P28min,P28max,int((P28max-P28min)/(P28stp*1.))+1)
@@ -114,29 +119,43 @@ with ('results','a') as output:
         for P28 in P28vals:
             for P18 in P18vals:
                 toomuch = 0
-                venus.write({'g28_req':P28})   # DST check if writing when off matters
-                venus.write({'k18_fw':P18})   # DST check if writing when off matters
 
-                #### DST add line to watch for settling or trouble
-                read heater power
-                    while not settled:
-                            measure
-                            if power<.1:
-                               change power to low
-                               toomuch = 1
-                               if P18 isn't last one or P28 isn't last one:
-                                   skip to next in list
+                if P28 in P28no:
+                    idx = P28no.index(P28)
+                    if P18>= P18no[idx]:
+                            toomuch = 1
+                if toomuch == 0:
+                    venus.write({'g28_req':P28})   # DST check if writing when off matters
+                    venus.write({'k18_fw':P18})   # DST check if writing when off matters
 
+                tnow = time.time()
 
-                # wait for a while and watch for trouble
-                # when settled:
-                val18 = P18
-                val28 = P28
-                if len(P18vals)==1: val18 = 0
-                if len(P28vals)==1: val28 = 0
-                if not toomuch:
-                    output.write("%.1f %5.1f %5.1f %5.1f %5.1f %6.1f %6.1f %5.3f\n"
-                            %(time.time(),Iinj,Iext,Imid,Isxt,val28,val18,venus.read('four_k_heater_power'))
+                while(time.time()<tnow+5*60 and toomuch==0):
+                    tt = time.time()
+                    lcwtemp = venus.read(['LCW_Temp_Plasma_Chamber'])
+                    fourkpower = venus.read(['four_k_heater_power'])
+                    Inow=np.array([venus.read(['inj_i']),venus.read(['ext_i']),
+                        venus.read(['mid_i']),venus.read(['sext_i'])])   # current currents
+                    if fourkpower < 0.1:
+                        venus.write({'g28_req':P28min})   
+                        venus.write({'k18_fw':P18min})   
+                        toomuch = 1
+                        P28no.append(P28)
+                        P18no.append(P18)
+                    time.sleep(1)
+                    val18 = P18
+                    val28 = P28
+                    if len(P18vals)==1: val18 = 0
+                    if len(P28vals)==1: val28 = 0
+                    if not toomuch:
+                        output.write("%3d %.1f %5.1f %5.1f %5.1f %5.1f %6.1f %6.1f %5.3f %5.3f\n"
+                            %(chngidx,time.time(),Inow[0],Inow[1],Inow[2],Inow[3],val28,val18,fourkpower,lcwtemp)
+                with open('ends.txt','a') as out2:
+                    if not toomuch:
+                      output.write("%3d %.1f %5.1f %5.1f %5.1f %5.1f %6.1f %6.1f %5.3f %5.3f\n"
+                            %(chngidx,time.time(),Inow[0],Inow[1],Inow[2],Inow[3],val28,val18,fourkpower,lcwtemp)
+
+                chngidx = chngidx +1
 
 with open('setnum','w') as f:
     f.write(str(setnum+1))
